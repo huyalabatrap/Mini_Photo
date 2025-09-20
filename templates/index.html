@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Photo Editor Web</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header>
+  <h1>AI Photo Editor Web</h1>
+  <p class="subtitle">Basic & Advanced image processing. Upload > pick a method > tweak > download.</p>
+</header>
+
+<main>
+  <section class="controls">
+    <form id="editForm">
+      <div class="field">
+        <label for="image">Image</label>
+        <input type="file" id="image" name="image" accept="image/*">
+        <input type="hidden" id="original_path" name="original_path" value="">
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="basic">Basic</button>
+        <button type="button" class="tab" data-tab="advanced">Advanced</button>
+      </div>
+
+      <!-- BASIC PANEL -->
+      <div class="panel" id="panel-basic">
+        <div class="row">
+          <div class="field">
+            <label for="group">Filter Group</label>
+            <select id="group" name="group">
+              <option value="blur">Blur</option>
+              <option value="sharpen">Sharpen</option>
+              <option value="edge">Edge Detection</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="method">Method</label>
+            <select id="method" name="method">
+              <!-- populated by JS based on group -->
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="presets">Presets</label>
+            <select id="presets" name="presets">
+              <option value="">None</option>
+              <option value="sharpen_blurry">Brighten & Sharpen</option>
+              <option value="soft_skin">Soft skin smoothing</option>
+              <option value="edge_boost">Edge boost (low-contrast)</option>
+              <option value="auto_contrast">Auto Contrast Boost</option>
+              <option value="low_light">Low-light Enhancement</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="kernel_size">Kernel Size</label>
+            <input type="number" id="kernel_size" name="kernel_size" value="3" min="1" step="2">
+          </div>
+          <div class="field" data-param="sigma">
+            <label for="sigma">Sigma</label>
+            <input type="number" id="sigma" name="sigma" value="1.0" min="0" step="0.1">
+          </div>
+          <div class="field" data-param="amount">
+            <label for="amount">Amount (Unsharp)</label>
+            <input type="number" id="amount" name="amount" value="1.5" min="0" step="0.1">
+          </div>
+          <div class="field" data-param="alpha">
+            <label for="alpha">Alpha (Laplacian Sharpen)</label>
+            <input type="number" id="alpha" name="alpha" value="1.0" min="0" step="0.1">
+          </div>
+          <div class="field" data-param="threshold">
+            <label for="threshold">Threshold</label>
+            <input type="number" id="threshold" name="threshold" value="128" min="0" max="255" step="1">
+          </div>
+          <div class="field two">
+            <label for="threshold1">Canny Threshold 1</label>
+            <input type="number" id="threshold1" name="threshold1" value="100" min="0" max="255" step="1">
+          </div>
+          <div class="field two">
+            <label for="threshold2">Canny Threshold 2</label>
+            <input type="number" id="threshold2" name="threshold2" value="200" min="0" max="255" step="1">
+          </div>
+          <div class="field" data-param="bilateral">
+            <label>Bilateral (d / sigmaColor / sigmaSpace)</label>
+            <div class="triplet">
+              <input type="number" id="diameter" name="diameter" value="9" min="1" step="1">
+              <input type="number" id="sigma_color" name="sigma_color" value="75" min="1" step="1">
+              <input type="number" id="sigma_space" name="sigma_space" value="75" min="1" step="1">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADVANCED PANEL -->
+      <div class="panel hidden" id="panel-advanced">
+        <div class="row">
+          <div class="field">
+            <label for="adv_method">Advanced Method</label>
+            <select id="adv_method" name="method" data-group="advanced">
+              <option value="negative">Intensity: Negative</option>
+              <option value="log">Intensity: Log Transform</option>
+              <option value="gamma">Intensity: Gamma Correction</option>
+              <option value="piecewise">Intensity: Piecewise-Linear</option>
+              <option value="hist_eq">Histogram Equalization</option>
+              <option value="clahe">CLAHE</option>
+            </select>
+            <input type="hidden" id="adv_group" name="group" value="advanced">
+          </div>
+          <div class="field checkbox">
+            <label>
+              <input type="checkbox" id="show_hist" name="show_hist" value="1">
+              Show histograms (before/after)
+            </label>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field adv adv-gamma adv-log">
+            <label for="c">Constant c</label>
+            <input type="number" id="c" name="c" value="1.0" min="0" step="0.1">
+          </div>
+          <div class="field adv adv-gamma">
+            <label for="gamma">Gamma</label>
+            <input type="number" id="gamma" name="gamma" value="1.2" min="0.01" step="0.01">
+          </div>
+          <div class="field adv adv-piecewise">
+            <label>Piecewise (r1/s1/r2/s2)</label>
+            <div class="quad">
+              <input type="number" id="r1" name="r1" value="50" min="0" max="255" step="1">
+              <input type="number" id="s1" name="s1" value="0" min="0" max="255" step="1">
+              <input type="number" id="r2" name="r2" value="200" min="1" max="255" step="1">
+              <input type="number" id="s2" name="s2" value="255" min="0" max="255" step="1">
+            </div>
+          </div>
+          <div class="field adv adv-clahe">
+            <label for="clip_limit">CLAHE Clip Limit</label>
+            <input type="number" id="clip_limit" name="clip_limit" value="2.0" min="0.1" step="0.1">
+          </div>
+          <div class="field adv adv-clahe">
+            <label for="tile_grid_size">CLAHE Tile Grid Size</label>
+            <input type="number" id="tile_grid_size" name="tile_grid_size" value="8" min="1" step="1">
+          </div>
+        </div>
+      </div>
+
+      
+      <!-- SMART ENHANCEMENT PRESETS -->
+      <div class="smart-presets">
+        <h3>Smart Enhancement Presets</h3>
+        <div class="preset-grid">
+          <button type="button" class="preset" data-preset="sharpen_blurry" title="Bilateral denoise + Unsharp + optional gamma">Sharpen Blurry Image</button>
+          <button type="button" class="preset" data-preset="enhance_low_light" title="Gamma < 1 + CLAHE + mild unsharp">Enhance Low-light Image</button>
+          <button type="button" class="preset" data-preset="denoise_smooth" title="Median + Gaussian + HistEq">Denoise & Smooth</button>
+          <button type="button" class="preset" data-preset="boost_contrast" title="Piecewise contrast + Sobel overlay">Boost Contrast</button>
+          <button type="button" class="preset" data-preset="artistic_hdr" title="HistEq + Unsharp + Gamma + Laplacian overlay">Artistic/HDR Effect</button>
+          <button type="button" class="preset" data-preset="medical_clarity" title="CLAHE + Laplacian overlay + gentle unsharp">Medical Image Clarity</button>
+        </div>
+        <div id="preset-reco" class="preset-reco hidden">Recommended: <span id="preset-reco-name"></span></div>
+        <div id="stages" class="stages hidden">
+          <h4>Pipeline Stages</h4>
+          <div id="stagesGrid" class="stages-grid"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="processBtn" type="submit">Process</button>
+        <a id="downloadLink" class="secondary" href="#" download="processed.png">Download result</a>
+      </div>
+
+    </form>
+
+    <!-- Histogram area -->
+    <div id="hist-area" class="hist-area hidden">
+      <div class="image-card">
+        <h3>Histogram (Original)</h3>
+        <div class="img-wrap hist"><img id="histBefore" alt="Histogram before"></div>
+      </div>
+      <div class="image-card">
+        <h3>Histogram (Processed)</h3>
+        <div class="img-wrap hist"><img id="histAfter" alt="Histogram after"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="gallery">
+    <div class="image-card">
+      <h3>Original</h3>
+      <div class="img-wrap">
+        <img id="originalPreview" alt="Original preview" src="">
+      </div>
+    </div>
+    <div class="image-card">
+      <h3>Processed</h3>
+      <div class="img-wrap">
+        <img id="processedPreview" alt="Processed preview" src="">
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>Built with Flask + OpenCV + NumPy + Matplotlib.</p>
+</footer>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
