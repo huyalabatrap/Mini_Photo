@@ -1,0 +1,254 @@
+{% extends "_base.html" %}
+
+{% block title %}Kết quả phân đoạn - Segmentation Studio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">✨ Kết quả phân đoạn</h1>
+    <p class="page-subtitle">Phương pháp: <strong>{{ method }}</strong> • Job ID: <code>{{ job_id }}</code></p>
+</div>
+
+<!-- Results Grid -->
+<div class="results-grid">
+    <!-- Original Image Panel -->
+    <div class="result-panel">
+        <div class="panel-header">
+            <h3 class="panel-title">
+                <span class="panel-icon">🖼️</span>
+                Ảnh gốc
+            </h3>
+        </div>
+        <div class="panel-body">
+            <div class="image-container">
+                <img 
+                    src="{{ url_for('static', filename=input_path.replace('static/', '').replace('static\\', '').replace('\\', '/')) }}" 
+                    alt="Ảnh gốc" 
+                    class="result-image"
+                    loading="lazy"
+                >
+            </div>
+        </div>
+    </div>
+
+    <!-- Mask Panel -->
+    <div class="result-panel">
+        <div class="panel-header">
+            <h3 class="panel-title">
+                <span class="panel-icon">🎭</span>
+                Mask phân đoạn
+            </h3>
+        </div>
+        <div class="panel-body">
+            <div class="image-container">
+                <img 
+                    src="{{ url_for('static', filename=result_path.replace('static/', '').replace('static\\', '').replace('\\', '/')) }}" 
+                    alt="Mask phân đoạn" 
+                    class="result-image"
+                    loading="lazy"
+                >
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay Panel (if exists) -->
+    {% if overlay_path %}
+    <div class="result-panel">
+        <div class="panel-header">
+            <h3 class="panel-title">
+                <span class="panel-icon">🔴</span>
+                Overlay
+            </h3>
+        </div>
+        <div class="panel-body">
+            <div class="image-container">
+                <img 
+                    src="{{ url_for('static', filename=overlay_path.replace('static/', '').replace('static\\', '').replace('\\', '/')) }}" 
+                    alt="Overlay với contour" 
+                    class="result-image"
+                    loading="lazy"
+                >
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Cutout Panel (if exists) -->
+    {% if cutout_path %}
+    <div class="result-panel">
+        <div class="panel-header">
+            <h3 class="panel-title">
+                <span class="panel-icon">✂️</span>
+                Cutout (PNG)
+            </h3>
+        </div>
+        <div class="panel-body">
+            <div class="image-container cutout-container">
+                <div class="transparency-bg"></div>
+                <img 
+                    src="{{ url_for('static', filename=cutout_path.replace('static/', '').replace('static\\', '').replace('\\', '/')) }}" 
+                    alt="Cutout với nền trong suốt" 
+                    class="result-image cutout-image"
+                    loading="lazy"
+                >
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Statistics Section -->
+<div class="stats-section">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">
+                <span class="card-icon">📊</span>
+                Thống kê phân đoạn
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Phương pháp</div>
+                    <div class="stat-value method-badge">{{ method }}</div>
+                </div>
+                
+                <div class="stat-item">
+                    <div class="stat-label">Số vùng</div>
+                    <div class="stat-value">{{ stats.num_regions or 'N/A' }}</div>
+                </div>
+                
+                <div class="stat-item">
+                    <div class="stat-label">Diện tích (pixels)</div>
+                    <div class="stat-value">{{ "{:,}".format(stats.area_pixels) if stats.area_pixels else 'N/A' }}</div>
+                </div>
+                
+                <div class="stat-item">
+                    <div class="stat-label">Tỷ lệ foreground</div>
+                    <div class="stat-value">{{ "{:.2%}".format(stats.foreground_ratio) if stats.foreground_ratio else 'N/A' }}</div>
+                </div>
+            </div>
+
+            <!-- Additional Stats (if available) -->
+            {% if stats.method_specific %}
+            <div class="additional-stats">
+                <h4 class="additional-title">Chi tiết phương pháp</h4>
+                <div class="additional-content">
+                    <span class="additional-badge">{{ stats.method_specific }}</span>
+                    {% if stats.clusters %}
+                        <span class="additional-badge">{{ stats.clusters }} clusters</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Download Section -->
+<div class="download-section">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">
+                <span class="card-icon">💾</span>
+                Tải xuống kết quả
+            </h2>
+        </div>
+        <div class="card-body">
+            <div class="download-grid">
+                <!-- Mask Download -->
+                <a 
+                    href="{{ url_for('download_file', filename=result_path|get_filename) }}" 
+                    class="download-btn btn-mask"
+                    download
+                >
+                    <span class="download-icon">🎭</span>
+                    <div class="download-content">
+                        <div class="download-title">Mask phân đoạn</div>
+                        <div class="download-subtitle">PNG • Binary mask</div>
+                    </div>
+                </a>
+
+                <!-- Cutout Download (if exists) -->
+                {% if cutout_path %}
+                <a 
+                    href="{{ url_for('download_file', filename=cutout_path|get_filename) }}" 
+                    class="download-btn btn-cutout"
+                    download
+                >
+                    <span class="download-icon">✂️</span>
+                    <div class="download-content">
+                        <div class="download-title">Cutout RGBA</div>
+                        <div class="download-subtitle">PNG • Nền trong suốt</div>
+                    </div>
+                </a>
+                {% endif %}
+
+                <!-- Overlay Download (if exists) -->
+                {% if overlay_path %}
+                <a 
+                    href="{{ url_for('download_file', filename=overlay_path|get_filename) }}" 
+                    class="download-btn btn-overlay"
+                    download
+                >
+                    <span class="download-icon">🔴</span>
+                    <div class="download-content">
+                        <div class="download-title">Overlay</div>
+                        <div class="download-subtitle">PNG • Contour đỏ</div>
+                    </div>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Actions Section -->
+<div class="actions-section">
+    <div class="actions-container">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+            <span class="btn-icon">⬅️</span>
+            <span class="btn-text">Quay lại trang chủ</span>
+        </a>
+        
+        <button class="btn btn-primary" onclick="window.print()">
+            <span class="btn-icon">🖨️</span>
+            <span class="btn-text">In kết quả</span>
+        </button>
+    </div>
+</div>
+
+<!-- Image Modal for Full View -->
+<div id="imageModal" class="modal hidden" onclick="closeModal()">
+    <div class="modal-content">
+        <img id="modalImage" src="" alt="Full size image">
+        <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+</div>
+
+<script>
+// Image modal functionality
+document.querySelectorAll('.result-image').forEach(img => {
+    img.addEventListener('click', function() {
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        modal.classList.remove('hidden');
+        modalImg.src = this.src;
+        modalImg.alt = this.alt;
+    });
+    
+    // Add click cursor
+    img.style.cursor = 'pointer';
+});
+
+function closeModal() {
+    document.getElementById('imageModal').classList.add('hidden');
+}
+
+// Keyboard support for modal
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeModal();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,208 @@
+{% extends "_base.html" %}
+
+{% block title %}Trang chủ - Segmentation Studio{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">🎯 Phân đoạn ảnh thông minh</h1>
+    <p class="page-subtitle">Tải lên ảnh và chọn phương pháp phân đoạn phù hợp</p>
+</div>
+
+<div class="grid-container">
+    <!-- Upload Form Section -->
+    <section class="card upload-section">
+        <div class="card-header">
+            <h2 class="card-title">📸 Phân đoạn ảnh (Mini Project)</h2>
+        </div>
+        
+        <div class="card-body">
+            <form id="uploadForm" action="{{ url_for('segment') }}" method="POST" enctype="multipart/form-data">
+                <!-- Image Upload -->
+                <div class="form-group">
+                    <label for="imageInput" class="form-label">
+                        <span class="label-icon">🖼️</span>
+                        Chọn ảnh để xử lý
+                    </label>
+                    <input 
+                        type="file" 
+                        name="image" 
+                        id="imageInput" 
+                        class="file-input"
+                        accept="image/*" 
+                        required
+                    >
+                    <div class="file-input-display">
+                        <span class="file-input-text">Chọn file ảnh...</span>
+                        <span class="file-input-button">Duyệt</span>
+                    </div>
+                </div>
+
+                <!-- Image Preview -->
+                <div id="imagePreview" class="image-preview hidden">
+                    <img id="previewImg" src="" alt="Preview">
+                    <div class="preview-overlay">
+                        <button type="button" class="preview-remove" onclick="removePreview()">
+                            <span>×</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Method Selection -->
+                <div class="form-group">
+                    <label for="methodSelect" class="form-label">
+                        <span class="label-icon">⚙️</span>
+                        Phương pháp phân đoạn
+                    </label>
+                    <select name="method" id="methodSelect" class="form-select" required>
+                        <optgroup label="🎯 Ứng dụng thực tế">
+                            <option value="background">Tách nền (GrabCut)</option>
+                            <option value="count">Đếm đối tượng (Watershed)</option>
+                            <option value="skin">Phân đoạn da (YCrCb)</option>
+                            <option value="plate">Biển số xe (Contour)</option>
+                            <option value="lesion">Tổn thương (CLAHE)</option>
+                        </optgroup>
+                        <optgroup label="🔧 Phương pháp cổ điển">
+                            <option value="otsu">Ngưỡng Otsu</option>
+                            <option value="kmeans">Phân cụm K-means</option>
+                            <option value="canny">Phát hiện biên Canny</option>
+                            <option value="watershed">Watershed cổ điển</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <!-- Advanced Parameters -->
+                <details id="advancedParams" class="advanced-params">
+                    <summary class="params-summary">
+                        <span class="summary-icon">🔧</span>
+                        Tham số nâng cao
+                    </summary>
+                    <div class="params-content">
+                        <div class="params-grid">
+                            <div class="param-group">
+                                <label for="kmeansK" class="param-label">K-means K:</label>
+                                <input 
+                                    type="number" 
+                                    name="kmeans_k" 
+                                    id="kmeansK" 
+                                    class="param-input"
+                                    min="2" 
+                                    max="6" 
+                                    placeholder="3"
+                                >
+                                <small class="param-hint">Số cụm (2-6)</small>
+                            </div>
+                            
+                            <div class="param-group">
+                                <label for="cannyLow" class="param-label">Canny Low:</label>
+                                <input 
+                                    type="number" 
+                                    name="canny_low" 
+                                    id="cannyLow" 
+                                    class="param-input"
+                                    min="1" 
+                                    max="255" 
+                                    placeholder="50"
+                                >
+                                <small class="param-hint">Ngưỡng thấp</small>
+                            </div>
+                            
+                            <div class="param-group">
+                                <label for="cannyHigh" class="param-label">Canny High:</label>
+                                <input 
+                                    type="number" 
+                                    name="canny_high" 
+                                    id="cannyHigh" 
+                                    class="param-input"
+                                    min="1" 
+                                    max="255" 
+                                    placeholder="150"
+                                >
+                                <small class="param-hint">Ngưỡng cao</small>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Submit Button -->
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <span class="btn-icon">🚀</span>
+                        <span class="btn-text">Phân đoạn</span>
+                        <div class="btn-loading hidden">
+                            <span class="spinner"></span>
+                        </div>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <!-- Tips Section -->
+    <section class="card tips-section">
+        <div class="card-header">
+            <h2 class="card-title">💡 Gợi ý sử dụng</h2>
+        </div>
+        
+        <div class="card-body">
+            <ul class="tips-list">
+                <li class="tip-item">
+                    <strong class="tip-method">🎯 Tách nền:</strong>
+                    <span class="tip-desc">Phù hợp với ảnh chân dung, sản phẩm có nền đơn giản</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">🔢 Đếm đối tượng:</strong>
+                    <span class="tip-desc">Đếm xu, hạt, tế bào, các vật thể nhỏ riêng biệt</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">👤 Phân đoạn da:</strong>
+                    <span class="tip-desc">Phát hiện vùng da người, thực phẩm có màu tương tự</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">🚗 Biển số xe:</strong>
+                    <span class="tip-desc">Tìm vùng chữ nhật có độ tương phản cao</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">🏥 Tổn thương:</strong>
+                    <span class="tip-desc">Phát hiện vết thương, đốm bất thường trên da</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">⚡ Otsu:</strong>
+                    <span class="tip-desc">Tách foreground/background tự động, nhanh</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">🎨 K-means:</strong>
+                    <span class="tip-desc">Phân nhóm theo màu sắc, phù hợp ảnh nhiều màu</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">📐 Canny:</strong>
+                    <span class="tip-desc">Phát hiện đường biên, khung viền đối tượng</span>
+                </li>
+                <li class="tip-item">
+                    <strong class="tip-method">💧 Watershed:</strong>
+                    <span class="tip-desc">Tách các đối tượng dính nhau, phân vùng chính xác</span>
+                </li>
+            </ul>
+
+            <div class="tips-footer">
+                <p class="tips-note">
+                    <span class="note-icon">📝</span>
+                    <strong>Lưu ý:</strong> Chọn định dạng ảnh: PNG, JPG, JPEG, BMP, TIF, TIFF (tối đa 10MB)
+                </p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+// Remove preview functionality
+function removePreview() {
+    const preview = document.getElementById('imagePreview');
+    const input = document.getElementById('imageInput');
+    const displayText = document.querySelector('.file-input-text');
+    
+    preview.classList.add('hidden');
+    input.value = '';
+    displayText.textContent = 'Chọn file ảnh...';
+}
+</script>
+{% endblock %}

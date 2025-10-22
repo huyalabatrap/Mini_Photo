@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Segmentation Studio{% endblock %}</title>
+    <meta name="description" content="Ứng dụng xử lý phân đoạn ảnh thông minh với giao diện hiện đại">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <a href="{{ url_for('index') }}" class="brand-link">
+                    <span class="brand-icon">🎯</span>
+                    <span class="brand-text">Segmentation Studio</span>
+                </a>
+            </div>
+            <div class="nav-menu">
+                <a href="{{ url_for('index') }}" class="nav-link">
+                    <span class="nav-icon">🏠</span>
+                    Trang chủ
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="flash-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }}">
+                        <div class="flash-content">
+                            <span class="flash-icon">
+                                {% if category == 'success' %}✅{% elif category == 'error' %}❌{% else %}ℹ️{% endif %}
+                            </span>
+                            <span class="flash-text">{{ message }}</span>
+                            <button class="flash-close" onclick="this.parentElement.parentElement.remove()">
+                                <span>×</span>
+                            </button>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-content">
+                <p class="footer-text">
+                    © 2025 Segmentation Studio • 
+                    <span class="footer-highlight">Xử lý ảnh thông minh</span>
+                </p>
+                <div class="footer-tech">
+                    <span class="tech-badge">Flask</span>
+                    <span class="tech-badge">OpenCV</span>
+                    <span class="tech-badge">AI</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
