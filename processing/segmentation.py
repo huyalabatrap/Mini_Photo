@@ -431,163 +431,277 @@ def _segment_skin(image: np.ndarray, params: Dict) -> Tuple[np.ndarray, Dict]:
 
 
 def _segment_license_plate(image: np.ndarray, params: Dict) -> Tuple[np.ndarray, Dict]:
-    """Detect license plate regions using multiple detection strategies."""
+    """
+    Advanced license plate detection using multiple strategies.
+    Detects rectangular regions with high contrast text patterns.
+    """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     height, width = gray.shape
+    
+    # Apply bilateral filter to reduce noise while keeping edges
+    filtered = cv2.bilateralFilter(gray, 11, 17, 17)
     
     # Create initial mask
     mask = np.zeros(gray.shape, dtype=np.uint8)
     
-    # Strategy 1: Text detection using morphological operations
-    # Apply Gaussian blur to reduce noise
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    all_candidates = []
     
-    # Apply threshold to get binary image
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # STRATEGY 1: Edge-based detection with strong rectangular constraint
+    # Find edges using Canny
+    edges = cv2.Canny(filtered, 30, 200)
     
-    # Create morphological kernel for text detection
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1))
-    
-    # Apply morphological operations to connect characters
-    morph = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-    morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel, iterations=1)
+    # Dilate edges to connect nearby components
+    kernel_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    edges_dilated = cv2.dilate(edges, kernel_rect, iterations=1)
     
     # Find contours
-    contours, _ = cv2.findContours(morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    plate_candidates = []
+    contours, _ = cv2.findContours(edges_dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
     for contour in contours:
-        area = cv2.contourArea(contour)
-        if area > 100:  # Minimum area for text regions
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = float(w) / h
+        # Get bounding rectangle
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        # License plate aspect ratio: typically 2:1 to 5:1 (width:height)
+        if h == 0:
+            continue
+        aspect_ratio = float(w) / h
+        
+        # Filter by size and aspect ratio
+        if (w > 50 and h > 15 and 
+            2.0 <= aspect_ratio <= 6.0 and 
+            w < width * 0.8 and h < height * 0.5):
             
-            # Check for license plate characteristics
-            if (w > 50 and h > 10 and 
-                1.5 <= aspect_ratio <= 8.0 and 
-                area > 200):
-                plate_candidates.append((contour, area, aspect_ratio, (x, y, w, h)))
+            area = w * h
+            
+            # Check rectangularity (how well it fits bounding box)
+            contour_area = cv2.contourArea(contour)
+            if contour_area > 0:
+                rectangularity = contour_area / area
+                if rectangularity > 0.5:  # Should be fairly rectangular
+                    all_candidates.append({
+                        'bbox': (x, y, w, h),
+                        'area': area,
+                        'aspect_ratio': aspect_ratio,
+                        'score': area * rectangularity,
+                        'method': 'edge_detection'
+                    })
     
-    # Strategy 2: Edge-based detection
-    edges = cv2.Canny(blurred, 50, 150)
+    # STRATEGY 2: Morphological text detection
+    # Top-hat transform to enhance bright text on dark background
+    kernel_tophat = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 17))
+    tophat = cv2.morphologyEx(filtered, cv2.MORPH_TOPHAT, kernel_tophat)
     
-    # Morphological operations on edges
-    kernel_edge = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 1))
-    edges_morph = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel_edge, iterations=2)
+    # Black-hat transform to enhance dark text on bright background
+    blackhat = cv2.morphologyEx(filtered, cv2.MORPH_BLACKHAT, kernel_tophat)
     
-    # Find contours on edges
-    edge_contours, _ = cv2.findContours(edges_morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Combine both
+    morph_combined = cv2.add(tophat, blackhat)
     
-    for contour in edge_contours:
-        area = cv2.contourArea(contour)
-        if area > 200:
+    # Threshold
+    _, morph_thresh = cv2.threshold(morph_combined, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # Close gaps between characters
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 3))
+    morph_closed = cv2.morphologyEx(morph_thresh, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+    
+    # Find contours
+    morph_contours, _ = cv2.findContours(morph_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in morph_contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        if h == 0:
+            continue
+        aspect_ratio = float(w) / h
+        
+        if (w > 60 and h > 15 and 
+            2.0 <= aspect_ratio <= 6.0):
+            
+            area = w * h
+            all_candidates.append({
+                'bbox': (x, y, w, h),
+                'area': area,
+                'aspect_ratio': aspect_ratio,
+                'score': area,
+                'method': 'morphological_text'
+            })
+    
+    # STRATEGY 3: Sobel gradient + variance (text has high local variance)
+    # Sobel in X direction (vertical edges - important for text)
+    sobelx = cv2.Sobel(filtered, cv2.CV_64F, 1, 0, ksize=3)
+    sobelx = np.absolute(sobelx)
+    sobelx = np.uint8(sobelx / sobelx.max() * 255)
+    
+    # Threshold sobel
+    _, sobel_thresh = cv2.threshold(sobelx, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # Close to connect text
+    kernel_sobel = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 5))
+    sobel_closed = cv2.morphologyEx(sobel_thresh, cv2.MORPH_CLOSE, kernel_sobel)
+    
+    sobel_contours, _ = cv2.findContours(sobel_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in sobel_contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        if h == 0:
+            continue
+        aspect_ratio = float(w) / h
+        
+        if (w > 70 and h > 18 and 
+            2.0 <= aspect_ratio <= 6.0):
+            
+            # Calculate variance in region (text should have high variance)
+            roi = filtered[y:y+h, x:x+w]
+            variance = np.var(roi)
+            
+            if variance > 200:  # High contrast region
+                area = w * h
+                all_candidates.append({
+                    'bbox': (x, y, w, h),
+                    'area': area,
+                    'aspect_ratio': aspect_ratio,
+                    'score': area * (variance / 1000),
+                    'method': 'sobel_variance'
+                })
+    
+    # STRATEGY 4: Color-based (white/yellow plates)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    
+    # White plates
+    lower_white = np.array([0, 0, 170], dtype=np.uint8)
+    upper_white = np.array([180, 30, 255], dtype=np.uint8)
+    mask_white = cv2.inRange(hsv, lower_white, upper_white)
+    
+    # Yellow plates
+    lower_yellow = np.array([15, 40, 140], dtype=np.uint8)
+    upper_yellow = np.array([35, 255, 255], dtype=np.uint8)
+    mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
+    
+    # Combine color masks
+    mask_color = cv2.bitwise_or(mask_white, mask_yellow)
+    
+    # Morphology
+    kernel_color = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    mask_color = cv2.morphologyEx(mask_color, cv2.MORPH_CLOSE, kernel_color, iterations=2)
+    
+    color_contours, _ = cv2.findContours(mask_color, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in color_contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        if h == 0:
+            continue
+        aspect_ratio = float(w) / h
+        
+        if (w > 80 and h > 20 and 
+            2.0 <= aspect_ratio <= 6.0):
+            
+            area = w * h
+            all_candidates.append({
+                'bbox': (x, y, w, h),
+                'area': area,
+                'aspect_ratio': aspect_ratio,
+                'score': area * 1.2,  # Boost color-based detection
+                'method': 'color_detection'
+            })
+    
+    # STRATEGY 5: Contour approximation (rectangles)
+    # Find all contours in the image
+    _, binary = cv2.threshold(filtered, 127, 255, cv2.THRESH_BINARY)
+    all_contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    
+    for contour in all_contours:
+        # Approximate contour
+        peri = cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, 0.02 * peri, True)
+        
+        # License plates are typically 4-sided
+        if len(approx) == 4:
             x, y, w, h = cv2.boundingRect(contour)
+            
+            if h == 0:
+                continue
             aspect_ratio = float(w) / h
             
             if (w > 60 and h > 15 and 
-                2.0 <= aspect_ratio <= 6.0 and 
-                area > 500):
-                plate_candidates.append((contour, area, aspect_ratio, (x, y, w, h)))
+                2.0 <= aspect_ratio <= 6.0):
+                
+                area = w * h
+                all_candidates.append({
+                    'bbox': (x, y, w, h),
+                    'area': area,
+                    'aspect_ratio': aspect_ratio,
+                    'score': area,
+                    'method': 'rectangle_approximation'
+                })
     
-    # Strategy 3: Color-based detection (for white/light colored plates)
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    
-    # Define range for white/light colors
-    lower_white = np.array([0, 0, 180])
-    upper_white = np.array([180, 30, 255])
-    
-    white_mask = cv2.inRange(hsv, lower_white, upper_white)
-    
-    # Morphological operations on white regions
-    kernel_white = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    white_morph = cv2.morphologyEx(white_mask, cv2.MORPH_CLOSE, kernel_white, iterations=2)
-    
-    white_contours, _ = cv2.findContours(white_morph, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    for contour in white_contours:
-        area = cv2.contourArea(contour)
-        if area > 300:
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = float(w) / h
-            
-            if (w > 70 and h > 20 and 
-                1.8 <= aspect_ratio <= 5.0):
-                plate_candidates.append((contour, area, aspect_ratio, (x, y, w, h)))
-    
-    # Select best candidate based on area and aspect ratio
-    if plate_candidates:
-        # Sort by area (larger is better for license plates)
-        plate_candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        # Take the largest reasonable candidate
-        best_candidate = plate_candidates[0]
-        contour, area, aspect_ratio, (x, y, w, h) = best_candidate
-        
-        # Create mask for the detected plate region
-        cv2.rectangle(mask, (x, y), (x + w, y + h), 255, -1)
-        
+    # EVALUATE AND SELECT BEST CANDIDATE
+    if not all_candidates:
+        # No candidates found - return empty mask
         return mask, {
-            "method_specific": "license_plate_detection", 
-            "detected_area": int(area),
-            "aspect_ratio": round(aspect_ratio, 2),
-            "plate_dimensions": f"{w}x{h}"
+            "method_specific": "license_plate_no_detection",
+            "detected_area": 0,
+            "aspect_ratio": 0,
+            "plate_dimensions": "0x0",
+            "strategies_tried": 5
         }
     
-    # Strategy 4: Fallback - detect any rectangular text-like regions
-    # Use adaptive threshold for better text detection
-    adaptive_thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                          cv2.THRESH_BINARY, 11, 2)
-    
-    # Invert if needed (text should be dark on light background)
-    if np.mean(adaptive_thresh) < 127:
-        adaptive_thresh = cv2.bitwise_not(adaptive_thresh)
-    
-    # Find contours on adaptive threshold
-    adapt_contours, _ = cv2.findContours(adaptive_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    fallback_candidates = []
-    for contour in adapt_contours:
-        area = cv2.contourArea(contour)
-        if area > 150:
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = float(w) / h
-            
-            # More lenient criteria for fallback
-            if (w > 40 and h > 8 and 
-                1.0 <= aspect_ratio <= 10.0 and
-                area > 100):
-                fallback_candidates.append((contour, area, aspect_ratio, (x, y, w, h)))
-    
-    if fallback_candidates:
-        # Sort by area
-        fallback_candidates.sort(key=lambda x: x[1], reverse=True)
-        best_fallback = fallback_candidates[0]
-        contour, area, aspect_ratio, (x, y, w, h) = best_fallback
+    # Score candidates based on multiple criteria
+    for candidate in all_candidates:
+        x, y, w, h = candidate['bbox']
         
-        # Create mask for fallback detection
-        cv2.rectangle(mask, (x, y), (x + w, y + h), 255, -1)
+        # Extract ROI
+        roi = filtered[y:y+h, x:x+w]
         
-        return mask, {
-            "method_specific": "license_plate_detection_fallback",
-            "detected_area": int(area),
-            "aspect_ratio": round(aspect_ratio, 2),
-            "plate_dimensions": f"{w}x{h}"
-        }
+        # Calculate additional features
+        # 1. Edge density (plates have high edge density from text)
+        roi_edges = cv2.Canny(roi, 50, 150)
+        edge_density = np.sum(roi_edges > 0) / (w * h)
+        
+        # 2. Variance (text creates high variance)
+        variance = np.var(roi) / 1000
+        
+        # 3. Aspect ratio score (closer to 3.0 is better)
+        ideal_ratio = 3.5
+        aspect_score = 1.0 / (1.0 + abs(candidate['aspect_ratio'] - ideal_ratio))
+        
+        # 4. Position score (plates often in lower half of image)
+        position_score = 1.0 + (y / height) * 0.5
+        
+        # Combined score
+        candidate['final_score'] = (
+            candidate['score'] * 0.3 +
+            edge_density * 1000 * 0.25 +
+            variance * 100 * 0.15 +
+            aspect_score * 500 * 0.15 +
+            position_score * 200 * 0.15
+        )
     
-    # If still no detection, create a mask for the center region (likely plate location)
-    center_x, center_y = width // 2, height // 2
-    plate_w, plate_h = min(width // 2, 200), min(height // 3, 60)
-    x = center_x - plate_w // 2
-    y = center_y - plate_h // 2
+    # Sort by final score
+    all_candidates.sort(key=lambda x: x['final_score'], reverse=True)
     
-    cv2.rectangle(mask, (x, y), (x + plate_w, y + plate_h), 255, -1)
+    # Get best candidate
+    best = all_candidates[0]
+    x, y, w, h = best['bbox']
+    
+    # Create mask with expanded region (add small margin)
+    margin = 5
+    x1 = max(0, x - margin)
+    y1 = max(0, y - margin)
+    x2 = min(width, x + w + margin)
+    y2 = min(height, y + h + margin)
+    
+    cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
     
     return mask, {
-        "method_specific": "license_plate_detection_center_fallback",
-        "detected_area": plate_w * plate_h,
-        "aspect_ratio": round(float(plate_w) / plate_h, 2),
-        "plate_dimensions": f"{plate_w}x{plate_h}"
+        "method_specific": f"license_plate_{best['method']}",
+        "detected_area": int(best['area']),
+        "aspect_ratio": round(best['aspect_ratio'], 2),
+        "plate_dimensions": f"{w}x{h}",
+        "confidence_score": round(best['final_score'], 2),
+        "candidates_found": len(all_candidates),
+        "strategies_used": "5 (edges, morphology, sobel, color, rectangles)"
     }
 
 
